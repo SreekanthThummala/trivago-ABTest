@@ -11,7 +11,7 @@ We’re splitting the traffic based on the client IP address in the request, so 
 Here’s the basic configuration:
 
 `split_clients $remote_addr $upstream {
-    5% appversion2;
+    30% appversion2;
     *  appversion1;
 }
 
