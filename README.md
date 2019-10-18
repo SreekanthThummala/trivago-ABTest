@@ -21,7 +21,7 @@ These are roughly the steps you need to follow to get an Istio enabled ‘trivag
 
    ### Deploy Istio
 
-   In this example, Istio 1.0.0 is used. To install Istio, follow the
+   In this example, Istio 1.3.3 is used. To install Istio, follow the
    [instructions](https://istio.io/docs/setup/kubernetes/helm-install/) from the
    Istio website.
 
@@ -68,8 +68,8 @@ These are roughly the steps you need to follow to get an Istio enabled ‘trivag
 
    And push the Image to Container Registry:
 
-```docker push docker.io/YOUR-PROJECT-ID/trivago-golang:v1
-```
+   ```docker push docker.io/YOUR-PROJECT-ID/trivago-golang:v1
+   ```
 ## Build java Image
 
    Please run the below commands to build the image and push to docker hub.
@@ -99,8 +99,8 @@ These are roughly the steps you need to follow to get an Istio enabled ‘trivag
    ```
   And push The Image to the Container Registry:
 
-```docker push docker.io/YOUR-PROJECT-ID/trivago-java:v2
-```
+  ```docker push docker.io/YOUR-PROJECT-ID/trivago-java:v2
+   ```
 
 ## Deployment and Service
 As mentioned, the app lifecycle is managed by Kubernetes. Therefore, you need to start with creating a Kubernetes Deployment and Service. 
