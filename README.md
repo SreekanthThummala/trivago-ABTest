@@ -1,32 +1,174 @@
-# Trivago-ABTest
+# K8s-AB-Testing
+A/B testing deployments consists of routing a subset of users to a new
+functionality under specific conditions. It is usually a technique for making
+business decisions based on statistics rather than a deployment strategy.
+However, it is related and can be implemented by adding extra functionality to a
+canary deployment so we will briefly discuss it here.
+
+# Basic Steps
+These are roughly the steps you need to follow to get an Istio enabled ‘trivago’ app:
+1. Create a Kubernetes cluster and install Istio with automatic sidecar injection.
+1. Create a Docker image out of the files provided and push it to a public image repository.
+1. Create Kubernetes Deployment and Service for your container.
+1. Create a Gateway to enable HTTP traffic to your cluster.
+1. Create a VirtualService to expose Kubernetes Service via Gateway.
+1. Create multiple versions of your app, create a DestinationRule to define subsets with different weights that you can refer from the VirtualService.
+
+ ## In practice
+
+   Before starting, it is recommended to know the basic concept of the
+   [Istio routing API](https://istio.io/blog/2018/v1alpha3-routing/).
+
+   ### Deploy Istio
+
+   In this example, Istio 1.0.0 is used. To install Istio, follow the
+   [instructions](https://istio.io/docs/setup/kubernetes/helm-install/) from the
+   Istio website.
+
+   Automatic sidecar injection should be enabled by default. Then annotate the
+   default namespace to enable it.
+
+   ```
+   $ kubectl label namespace default istio-injection=enabled
+   ```
+   
+### Package the trivago app in a docker container
+
+   Next, prepare your app to run as a container. The first step is to define the container and its contents.
+
+   In the base directory of the app, I have already created a Dockerfile to define the Docker image.
+
+  # Build golang image.
+
+   ```
+   $cd trivago-golang
+   ```
+
+   Now, let's build the image:
+
+   ```
+   docker build -t docker.io/YOUR-PROJECT-ID/trivago-golang:v1
+   ```
+
+   Once this completes (it'll take some time to download and extract everything), you can see the image is built and saved locally:
+
+   ```
+   docker images
+   REPOSITORY                                  TAG   
+   docker.io/yourproject-XXXX/trivago-golang   v1 
+   ```
+   Test the image locally with the following command which will run a Docker container locally on port 8080 from your newly-created container image:
+
+   ```
+   docker run -p 8080:8080 docker.io/YOUR-PROJECT-ID/trivago-golang:v1
+   ```
+# Build java Image
 
 
+   ```
+   $cd trivago-java
+   ```
 
-# Split Clients for A/B Testing
+   Now, let's build the image:
 
-The Split Clients module allows you to split incoming traffic between upstream groups based on a request characteristic of your choice. You define the split as the percentage of incoming traffic to forward to the different upstream groups. A common use case is testing the new version of an application by sending a small proportion of traffic to it and the remainder to the current version. In our example, we’re sending 5% of the traffic to the upstream group for the new version, appversion2, and the remainder (95%) to the current version, appversion1.
+   ```
+   docker build -t docker.io/YOUR-PROJECT-ID/trivago-java:v2
+   ```
 
-We’re splitting the traffic based on the client IP address in the request, so we set the split_clients directive’s first parameter to the NGINX variable $remote_addr. With the second parameter we set the variable $upstream to the name of the upstream group.
+   Once this completes (it'll take some time to download and extract everything), you can see the image is built and saved locally:
 
-Here’s the basic configuration:
+   ```
+   docker images
+   REPOSITORY                                  TAG   
+   docker.io/yourproject-XXXX/trivago-golang   v1
+   docker.io/yourproject-XXXX/trivago-java     v2 
+   ```
+   Test the image locally with the following command which will run a Docker container locally on port 8080 from your newly-created container image:
 
-`split_clients $remote_addr $upstream {
-    30% appversion2;
-    *  appversion1;
-}
+   ```
+   docker run -p 8080:8080 docker.io/YOUR-PROJECT-ID/trivago-java:v2
+   ```
 
-upstream appversion1 {
-   # ...
-}
+# Deployment and Service
+As I mentioned, the app lifecycle is managed by Kubernetes. Therefore, you need to start with creating a Kubernetes Deployment and Service. 
+In my case, I have a containerized the apps whose image I already pushed to Docker Hub. 
 
-upstream appversion2 {
-   # ...
-}
+I have created the deployment and service files under AB-Testing with the name trivago.yaml.
+Run the below command to create the deployment and service.
 
-server {
-    listen 80;
-    location / {
-        proxy_pass http://$upstream;
-    }
-}
-`
+```
+$ kubectl apply -f trivago.yaml
+service "trivago-service" created
+deployment.extensions "trivago-v1" created
+deployment.extensions "trivago-v2" created
+```
+
+# Gateway
+We can now start looking into Istio Routing. First, we need to enable HTTP/HTTPS traffic to our service mesh. To do that, we need to create a Gateway. Gateway describes a load balancer operating at the edge of the mesh receiving incoming or outgoing HTTP/TCP connections.
+I had created an trivago-gateway.yaml file.
+
+Create the Gateway:
+
+```
+$ kubectl apply -f trivago-gateway.yaml
+gateway.networking.istio.io "trivago-gateway" created
+```
+
+At this point, we have HTTP traffic enabled for our cluster. We need to map the Kubernetes Service we created earlier to the Gateway. We’ll do that with a VirtualService.
+
+# VirtualService
+A VirtualService essentially connects a Kubernetes Service to Istio Gateway. It can define set of traffic routing rules to apply when a host is addressed.
+Let’s create an trivago-virtualservice.yaml file:
+
+Notice that a VirtualService is tied to a specific Gateway and it defines a host that refers to the Kubernetes Service.
+
+Create the VirtualService:
+
+```
+$ kubectl apply -f trivago-virtualservice.yaml
+virtualservice.networking.istio.io "trivago-virtualservice" created
+```
+
+# Test the app
+We’re ready to test our app. We need to get the IP address of the Istio Ingress Gateway:
+
+```$ kubectl get svc istio-ingressgateway -n istio-system
+NAME                   TYPE           CLUSTER-IP     EXTERNAL-IP                                                                                                        
+istio-ingressgateway   LoadBalancer   10.31.247.41   35.240.XX.XXX
+```
+
+When we browser to the EXTERNAL-IP, we should see the Trivago app:
+
+# DestinationRule
+
+As we want to split the traffic between two versions, You need to create a DestinationRule to define those versions, called subsets in Istio.
+trivago.yaml file to define the Deployment for v2 with v2 version of the container:
+
+Create the new deployment:
+
+```
+$ kubectl apply -f trivago.yaml
+service "aspnetcore-service" unchanged
+deployment.extensions "trivago-v1" unchanged
+deployment.extensions "trivago-v2" created
+```
+
+If you refresh the browser with the EXTERNAL-IP , you’ll see that VirtualService rotates through v1 and v2 versions of the app:
+
+v1 of the app
+
+v2 of the app
+
+This is expected because both versions are exposed behind the same Kubernetes service:trivago-service.
+
+# Split traffic between versions
+
+We want to split traffic between versions for golang and java. We want to send 70% of the traffic to the v1 and 30% of the traffic to the v2 version of the service. You can easily achieve this with Istio. Created a new trivago-virtualservice-weights.yaml file to refer to the two subsets with different weights:
+
+Update the VirtualService:
+
+```
+kubectl apply -f aspnetcore-virtualservice-weights.yaml
+```
+
+Now, when you refresh the browser, you should see the v1 vs. v2 versions served with roughly a 7:3 ratio.
